@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from exceptions import (
     EnviromentTokenError,
     GetAPIAnswerException,
-    CheckResponseException,
     CheckHomeworkError,
 )
 
