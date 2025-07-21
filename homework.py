@@ -13,6 +13,7 @@ from exceptions import (
     EnviromentTokenError,
     GetAPIAnswerException,
     CheckHomeworkError,
+    CheckResponseException
 )
 
 load_dotenv()
@@ -104,6 +105,12 @@ def check_response(response):
     if not isinstance(response, dict):
         raise TypeError('Ответ API не словарь')
     check_list_homeworks = response.get('homeworks')
+    api_keys = ['homeworks', 'current_date']
+    for key in api_keys:
+        if key not in response:
+            raise CheckResponseException(
+                f'Ответ API не содержит ожидаемые ключи: {api_keys}'
+            )
     if check_list_homeworks is None:
         raise KeyError('Ключ "homeworks" не доступен')
     if not isinstance(check_list_homeworks, list):
