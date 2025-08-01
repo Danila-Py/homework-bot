@@ -6,7 +6,7 @@ import sys
 import time
 
 import requests
-from telebot import TeleBot
+from telebot import TeleBot, apihelper
 from dotenv import load_dotenv
 
 from exceptions import (
@@ -60,6 +60,7 @@ def check_tokens():
             'Программа принудительно остановлена.')
         logger.critical(error_message, exc_info=True)
         raise EnviromentTokenError(error_message)
+    return True
 
 
 def send_message(bot, message):
@@ -68,10 +69,15 @@ def send_message(bot, message):
         'Запуск функции send_message, начало отправки сообщения.'
     )
     try:
+        logger.debug(f'Отправка: {message}')
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.debug(f'Бот отправил сообщение: {message}')
-    except TeleBot:
-        logger.error('Сбой отправки сообщения.')
+        logger.info(f'Бот отправил сообщение: {message}')
+    except (
+            apihelper.ApiException,
+            requests.exceptions.RequestException
+    ) as exc:
+        logger.error(f'Ошибка отправки: {exc}', exc_info=True)
+        return False
 
 
 def get_api_answer(current_timestamp):
@@ -90,14 +96,9 @@ def get_api_answer(current_timestamp):
         )
     except requests.RequestException:
         raise ConnectionError(error_message)
-    else:
-        if response.status_code != HTTPStatus.OK:
-            raise GetAPIAnswerException(error_message)
-        logger.info(
-            f'Запрос к API {ENDPOINT} успешно отправлен. '
-            f'Передан параметр from_date: {current_timestamp}'
-        )
+    if response.status_code == requests.codes.ok:
         return response.json()
+    raise GetAPIAnswerException(error_message) 
 
 
 def check_response(response):
@@ -111,37 +112,35 @@ def check_response(response):
             raise CheckResponseException(
                 f'Ответ API не содержит ожидаемые ключи: {api_keys}'
             )
-    if check_list_homeworks is None:
-        raise KeyError('Ключ "homeworks" не доступен')
+    if 'homeworks' not in response:
+        raise KeyError('Отсутствует ключ homeworks в ответе')
     if not isinstance(check_list_homeworks, list):
-        raise TypeError('Ответ API по ключу "homeworks" не список')
-    if len(check_list_homeworks) >= 0:
-        return check_list_homeworks
-    else:
-        logger.debug('В текущей проверке новые статусы ДЗ отсутсвуют')
+        raise TypeError(
+            'В ответе API под ключом "homeworks" получен не тип "list", '
+            f'а: {type(check_list_homeworks).__name__}'
+        )
+    return check_list_homeworks
 
 
 def parse_status(homework):
     """Извлекает из информации о конкретном ДЗ его статус."""
     if 'homework_name' not in homework:
         message = 'Ключ homework_name недоступен'
-        logger.error(message)
         raise KeyError(message)
     if 'status' not in homework:
         message = 'Ключ status недоступен'
-        logger.error(message)
         raise KeyError(message)
+
     homework_name = homework['homework_name']
     homework_status = homework['status']
-    if homework_status in HOMEWORK_VERDICTS:
-        verdict = HOMEWORK_VERDICTS[homework_status]
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    else:
-        message = (
-            f'Передан неизвестный статус домашней работы "{homework_status}"'
+
+    if homework_status not in HOMEWORK_VERDICTS:
+        raise CheckResponseException(
+            f'Некорректный статус работы: {homework_status}'
         )
-        logger.error(message)
-        raise CheckHomeworkError(message)
+
+    verdict = HOMEWORK_VERDICTS[homework_status]
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def main():
@@ -156,24 +155,21 @@ def main():
     while True:
         try:
             response = get_api_answer(timestamp)
-            check_response(response)
-            if not response.get('homeworks'):
-                logger.debug(
-                    f'Запрос к API {ENDPOINT} вернул пустой список homeworks, '
-                    'статус работ не изменился.'
-                )
+            homeworks = check_response(response)
+            if homeworks:
+                status_message = parse_status(homeworks[0])
+                success = send_message(bot, status_message)
+                if success:
+                    timestamp = response.get('current_date', timestamp)
+                    error_message = None
             else:
-                message = parse_status(response.get('homeworks')[0])
-                send_message(bot, message)
-                error_message = message
+                logger.info('Новых статусов пока нет')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(error_message, exc_info=True)
-            if error_message != message:
-                error_message = message
-                send_message(bot, error_message)
-        else:
-            timestamp = response.get('current_date')
+            if message != error_message:
+                if send_message(bot, message):
+                    error_message = message
         finally:
             time.sleep(RETRY_PERIOD)
 
