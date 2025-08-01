@@ -1,4 +1,3 @@
-from http import HTTPStatus
 import logging
 from logging import StreamHandler
 import os
@@ -13,7 +12,7 @@ from exceptions import (
     EnviromentTokenError,
     GetAPIAnswerException,
     CheckHomeworkError,
-    CheckResponseException
+    CheckResponseException,
 )
 
 load_dotenv()
@@ -98,7 +97,7 @@ def get_api_answer(current_timestamp):
         raise ConnectionError(error_message)
     if response.status_code == requests.codes.ok:
         return response.json()
-    raise GetAPIAnswerException(error_message) 
+    raise GetAPIAnswerException(error_message)
 
 
 def check_response(response):
@@ -135,7 +134,7 @@ def parse_status(homework):
     homework_status = homework['status']
 
     if homework_status not in HOMEWORK_VERDICTS:
-        raise CheckResponseException(
+        raise CheckHomeworkError(
             f'Некорректный статус работы: {homework_status}'
         )
 
