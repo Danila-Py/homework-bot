@@ -12,3 +12,7 @@ class CheckResponseException(Exception):
 
 class CheckHomeworkError(Exception):
     """Ошибки при извелечении информации о домашней работе."""
+
+
+class RequestError(Exception):
+    """Возникает при недоступности ендпоинта."""

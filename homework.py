@@ -13,6 +13,7 @@ from exceptions import (
     GetAPIAnswerException,
     CheckHomeworkError,
     CheckResponseException,
+    RequestError
 )
 
 load_dotenv()
@@ -53,13 +54,7 @@ def check_tokens():
         var for var in variables
         if variables.get(var) is None
     ]
-    if missing_variables:
-        error_message = (
-            f'Отсутствуют переменные окружения: {missing_variables}. '
-            'Программа принудительно остановлена.')
-        logger.critical(error_message, exc_info=True)
-        raise EnviromentTokenError(error_message)
-    return True
+    return missing_variables
 
 
 def send_message(bot, message):
@@ -70,13 +65,13 @@ def send_message(bot, message):
     try:
         logger.debug(f'Отправка: {message}')
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.info(f'Бот отправил сообщение: {message}')
     except (
             apihelper.ApiException,
             requests.exceptions.RequestException
     ) as exc:
         logger.error(f'Ошибка отправки: {exc}', exc_info=True)
-        return False
+    else:
+        logger.info(f'Бот успешно отправил сообщение: {message}')
 
 
 def get_api_answer(current_timestamp):
@@ -94,7 +89,7 @@ def get_api_answer(current_timestamp):
             ENDPOINT, headers=HEADERS, params={'from_date': current_timestamp}
         )
     except requests.RequestException:
-        raise ConnectionError(error_message)
+        raise RequestError(error_message)
     if response.status_code == requests.codes.ok:
         return response.json()
     raise GetAPIAnswerException(error_message)
@@ -124,11 +119,9 @@ def check_response(response):
 def parse_status(homework):
     """Извлекает из информации о конкретном ДЗ его статус."""
     if 'homework_name' not in homework:
-        message = 'Ключ homework_name недоступен'
-        raise KeyError(message)
+        raise KeyError('Ключ homework_name недоступен')
     if 'status' not in homework:
-        message = 'Ключ status недоступен'
-        raise KeyError(message)
+        raise KeyError('Ключ status недоступен')
 
     homework_name = homework['homework_name']
     homework_status = homework['status']
@@ -145,30 +138,41 @@ def parse_status(homework):
 def main():
     """Основная логика работы бота."""
     logger.info('Вы запустили Бота')
-    check_tokens()
+    missing_variables = check_tokens()
+    if missing_variables:
+        error_message = (
+            f'Отсутствуют переменные окружения: {missing_variables}. '
+            'Программа принудительно остановлена.'
+        )
+        logger.critical(error_message, exc_info=True)
+        raise EnviromentTokenError(error_message)
 
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     error_message = None
+    processed_homeworks = set()
 
     while True:
         try:
             response = get_api_answer(timestamp)
             homeworks = check_response(response)
-            if homeworks:
-                status_message = parse_status(homeworks[0])
-                success = send_message(bot, status_message)
-                if success:
-                    timestamp = response.get('current_date', timestamp)
-                    error_message = None
+
+            if not homeworks:
+                send_message(bot, "Новых статусов пока нет")
+                logger.info("Новых статусов пока нет")
             else:
-                logger.info('Новых статусов пока нет')
+                for homework in homeworks:
+                    if homework['homework_name'] not in processed_homeworks:
+                        status_message = parse_status(homework)
+                        success = send_message(bot, status_message)
+                        if success:
+                            processed_homeworks.add(homework['homework_name'])
+                            timestamp = response.get('current_date', timestamp)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(error_message, exc_info=True)
             if message != error_message:
-                if send_message(bot, message):
-                    error_message = message
+                error_message = message
         finally:
             time.sleep(RETRY_PERIOD)
 
