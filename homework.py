@@ -150,29 +150,32 @@ def main():
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     error_message = None
-    processed_homeworks = set()
+    processed_homeworks = ''
 
     while True:
         try:
             response = get_api_answer(timestamp)
             homeworks = check_response(response)
 
-            if not homeworks:
-                send_message(bot, "Новых статусов пока нет")
-                logger.info("Новых статусов пока нет")
+            if homeworks:
+                status_message = parse_status(homeworks[0])
+                success = send_message(bot, status_message)
+
+                if success:
+                    timestamp = response.get('current_date', timestamp)
+                    processed_homeworks = ''
             else:
-                for homework in homeworks:
-                    if homework['homework_name'] not in processed_homeworks:
-                        status_message = parse_status(homework)
-                        success = send_message(bot, status_message)
-                        if success:
-                            processed_homeworks.add(homework['homework_name'])
-                            timestamp = response.get('current_date', timestamp)
+                if homeworks['homework_name'] not in processed_homeworks:
+                    status_message = parse_status(homeworks)
+                    success = send_message(bot, status_message)
+                    if success:
+                        processed_homeworks.add(homeworks['homework_name'])
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(error_message, exc_info=True)
             if message != error_message:
                 error_message = message
+                send_message(bot, error_message)
         finally:
             time.sleep(RETRY_PERIOD)
 
