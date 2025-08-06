@@ -149,7 +149,6 @@ def main():
 
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
-    error_message = None
     processed_homeworks = ''
 
     while True:
@@ -160,22 +159,19 @@ def main():
             if homeworks:
                 status_message = parse_status(homeworks[0])
                 success = send_message(bot, status_message)
-
-                if success:
-                    timestamp = response.get('current_date', timestamp)
-                    processed_homeworks = ''
             else:
-                if homeworks['homework_name'] not in processed_homeworks:
+                if homeworks['homework_name'] in processed_homeworks:
                     status_message = parse_status(homeworks)
                     success = send_message(bot, status_message)
                     if success:
                         processed_homeworks.add(homeworks['homework_name'])
+            timestamp = response.get('current_date', timestamp)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            logger.error(error_message, exc_info=True)
-            if message != error_message:
-                error_message = message
-                send_message(bot, error_message)
+            logger.error(processed_homeworks, exc_info=True)
+            if message != processed_homeworks:
+                processed_homeworks = message
+                send_message(bot, processed_homeworks)
         finally:
             time.sleep(RETRY_PERIOD)
 
