@@ -158,9 +158,6 @@ def main():
             if homeworks:
                 status = parse_status(homeworks[0])
                 send_message(bot, status)
-            if homeworks['homework_name'] in last_error:
-                status_message = parse_status(homeworks)
-                send_message(bot, status_message)
             timestamp = response.get('current_date', timestamp)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
