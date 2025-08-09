@@ -157,14 +157,21 @@ def main():
             homeworks = check_response(response)
             if homeworks:
                 status = parse_status(homeworks[0])
-                send_message(bot, status)
-            timestamp = response.get('current_date', timestamp)
+                if status != last_error:
+                    last_error = status
+                    send_message(bot, last_error)
+            else:
+                logger.info('Новых обновлений пока нет')
+                send_message(bot, 'Обновлений нет')
+
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(last_error, exc_info=True)
             if message != last_error:
                 last_error = message
                 send_message(bot, last_error)
+        else:
+            timestamp = response.get('current_date', timestamp)
         finally:
             time.sleep(RETRY_PERIOD)
 
